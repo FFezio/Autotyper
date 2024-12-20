@@ -1,8 +1,8 @@
+.venv/
+.virtualenv/
+__pycache__/
+.idea/
+.vscode/
 *.log
-*.venv
-*.virtualenv
-__pycache__/*
-.idea/*
-.vscode/*
 *.pyc
 *.pyo
