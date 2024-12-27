@@ -11,14 +11,6 @@ SPECIAL_KEYS = {
 }
 TYPING_URL = "https://www.typing.com/student/lessons"
 
-@dataclass()
-class GoogleLoginLocators:
-    EMAIL_INPUT = "input[type='email']"
-    PASSWORD_INPUT = "input[type='password']"
-    LOGIN_BUTTON = "button.btn--google"
-    ACCOUNTS_LIST_CONTAINER = "ul li"
-    ACCOUNTS_LIST = "[data-email]"
-
 
 @dataclass()
 class TypingLocators:

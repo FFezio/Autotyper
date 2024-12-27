@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "autotyperr"
+version = "0.1"
+description = "Autotyping for lazy typers"
+authors = ["A.Fadryel <82724052+FFezio@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+playwright = "^1.49.1"
+customtkinter = "^5.2.2"
+rich = "^13.9.4"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

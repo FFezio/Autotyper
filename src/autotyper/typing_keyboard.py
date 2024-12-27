@@ -1,21 +1,58 @@
-from logging import getLogger
 from typing import Optional
 from playwright.sync_api import Page, Locator
 from src.core.constants import TypingLessonLocators, TYPING_URL
+from src.core.errors import URLChangedError
 from src.utils.browser_utils import locator_exists, retries
-from src.utils.keyboard_utils import is_special_key, get_actual_key, get_special_key
+from src.core.constants import SPECIAL_KEYS
 
-logger = getLogger("autotyper")
+def _is_special_key(key:str) -> bool:
+    """
+    Returns ``True`` if the key is special.
+    :param key: The string representing the keyboard key.
+    :return:
+    """
+    return key in SPECIAL_KEYS
+
+def _get_actual_key(key:str) -> str:
+    """
+    Returns the actual key that the special keyboard key represents.
+
+    Raises a ``ValueError`` if the key doesn't match a special keyboard key.
+    :param key: The string representing the keyboard key.
+    :raise ValueError:
+    :return:
+    """
+    if key not in SPECIAL_KEYS:
+        message = "The key: " + key, " is not a special key or is not registered as it."
+        raise ValueError(message)
+    return SPECIAL_KEYS[key]
+
+def _get_special_key(key:str) -> str:
+    """
+    Returns the special key of the current key.
+    Raises a ``ValueError`` if the key doesn't match a special keyboard key.
+    :param key: The string representing the keyboard key.
+    :raise ValueError:
+    :return:
+    """
+    if key not in SPECIAL_KEYS.values():
+        message = "The key: " + key, " doesn't contain a special key."
+        raise ValueError(message)
+
+    special_key_values = list(SPECIAL_KEYS.values())
+    special_key_keys = list(SPECIAL_KEYS.keys())
+    return special_key_keys[special_key_values.index(key)]
+
 
 class KeyboardKey:
     def __init__(self, *, main_key:str, secondary_key:Optional[str]):
         """
         Represents a single key from the typing keyboard.
-        :param main_key:
-        :param secondary_key:
+        :param main_key: The character that is displayed when the keyboard key is pressed. e.g: `0`
+        :param secondary_key: The character that is displayed when the keyboard key is pressed alongside with `Shift`. e.g `)`
         """
-        self._is_special:bool = is_special_key(main_key)
-        self._main_key:str = main_key if not self._is_special else get_actual_key(main_key)
+        self._is_special:bool = _is_special_key(main_key)
+        self._main_key:str = main_key if not self._is_special else _get_actual_key(main_key)
         self._secondary_key:Optional[str] = secondary_key
         self._shifted = False
 
@@ -61,10 +98,13 @@ class KeyboardKey:
     def secondary(self) -> str:
         return self._secondary_key
 
-
 class TypingKeyboard:
-    def __init__(self, page:Page):
-        self._typing_page = page
+    def __init__(self, typing_page:Page):
+        """
+        Represents the typing keyboard of the lessons.
+        :param typing_page: The typing page pointing to the exercise url.
+        """
+        self._typing_page = typing_page
 
     @staticmethod
     def _extract_key_labels(active_keys_locator: Locator) -> Optional[list[list[str]]]:
@@ -95,7 +135,6 @@ class TypingKeyboard:
         :param active_keys_locator: The playwright locator containing the list of divs of class "keyboard-key"
         :return:
         """
-        logger.debug("Extracting key labels")
         raw_keys: list[list[str]] = []
         # Iterates through the list of divs containing the keyboard key characters
         for key in active_keys_locator.all():
@@ -103,7 +142,6 @@ class TypingKeyboard:
 
             # Iterates over every character inside the keyboard key.
             for characters in key.locator(TypingLessonLocators.KEY_LABEL).all():
-                logger.debug(f"Extracting single character from keyboard key.")
                 # checks if there are spans inside the keyboard key and extract each character.
                 # If no spans are found then it will extract every string inside the divs with the class "keyboard-key"
                 # In any case the resulting characters will be appended into a list like this: ["main key", "secondary"]
@@ -111,17 +149,12 @@ class TypingKeyboard:
                 if locator_exists(inner_keys):
                     keys.extend(
                         character.inner_text() for character in inner_keys.all())
-                    logger.debug(f"Keyboard key had inner <span[s]>. Extracted keys: {keys}")
                 else:
                     keys.extend(
                         character.inner_text() for character in characters.all())
-                    logger.debug(f"Keyboard key didn't had inner <span[s]>, inner <div[s]> were found instead. Extracted keys: {keys}")
-
-            logger.debug(f"Total keys extracted: {keys}")
             raw_keys.append(keys)
 
         out_keys = raw_keys if any(inner_list for inner_list in raw_keys) else None
-        logger.debug(f"Extraction done, returning keys: {out_keys=}") if out_keys else  logger.warning(f"No keys were extracted. {out_keys=}")
         return out_keys
 
     @staticmethod
@@ -134,7 +167,6 @@ class TypingKeyboard:
         """
 
         processed_keys = []
-        logger.debug("Processing raw keys.")
         # key group represents the div that acts as a keyboard key on the typing page.
         # something like this:
         # <div clas="is-active ...">
@@ -149,7 +181,7 @@ class TypingKeyboard:
         for key_group in raw_keys:
             main_key = None
             secondary_key = None
-            logger.debug("Looping into a key group.")
+
             if len(key_group) == 3:
                 # When there are 3 positions on the key group that means that inner spans are inside a single div
                 # with the class ".key-label" like this:
@@ -165,7 +197,6 @@ class TypingKeyboard:
                 #   [["Caps","Lock", "⇪"], [...]]
                 #
                 main_key = key_group[2]  # Third element is likely the main key
-                logger.debug(f"Key group contains 3 characters {key_group}, picked index 2 [{main_key}] as main key, no secondary keys were set.")
 
             elif len(key_group) == 2:
                 # When the key group takes 2 positions, the special key might be flipped.
@@ -180,10 +211,8 @@ class TypingKeyboard:
                 # [idx=0 ,idx=1]                   [idx=0 ,idx=1] <- index on the list
                 # [shift,  [⇧]] [][][][][][][][][] [[⇧],   shift] <- Keyboard representation
                 #
-                main_key = key_group[1] if not is_special_key(key_group[0]) else key_group[0]
+                main_key = key_group[1] if not _is_special_key(key_group[0]) else key_group[0]
                 secondary_key = key_group[0]
-                logger.debug(
-                    f"Key group contains 2 characters {key_group}, picked index {key_group.index(main_key)} [{main_key=}] as main key, index 0 [{secondary_key=}]. was set as secondary.")
 
             elif len(key_group) == 1:
                 # When the key group just contains one index that means that a single div
@@ -191,11 +220,9 @@ class TypingKeyboard:
                 # so the list ``raw_keys`` just returns it as is, like this:
                 # [["A"],[...]] <- A represents the [A] keyboard key which just contains a single character.
                 main_key = key_group[0]
-                logger.debug(
-                    f"Key group contains 1 characters {key_group}, picked index 1 [{main_key=}] as main key, no secondary keys were set.")
+
 
             processed_keys.append(KeyboardKey(main_key=main_key, secondary_key=secondary_key))
-        logger.debug(f"returning processed keys: {processed_keys=}")
         return processed_keys
 
     @staticmethod
@@ -207,32 +234,29 @@ class TypingKeyboard:
         :param keys: A list of ``KeyboardKey`` objects
         :return: A list of ``KeyboardKey`` objects with the shift effect applied
         """
-        logger.debug(f"Applying Shift effect to keys. {keys=}")
 
         # Check if Shift or CapsLock is active
         shift_active = any(key.main_key.lower() in {"shift", "capslock"} for key in keys)
 
         if shift_active:
-            logger.debug(f"Shift flag is active, applying shift to keys. {keys=}")
             # Remove Shift and CapsLock keys from the list
             keys = [key for key in keys if key.main_key.lower() not in {"shift", "capslock"}]
-
-            # Apply the shift effect to the remaining keys
             for key in keys:
                 key.shift = True  # Apply shift effect to remaining keys
-        logger.debug(f"Returning shifted keys: {keys}")
+
         return keys
 
     @retries()
-    def _type(self, keys: list[KeyboardKey]):
+    def _type(self, keys: list[KeyboardKey], delay:float):
         """
         Presses a list of Keyboard keys on the typing exercise.
         :param keys: A list of ``KeyboardKeys``
         :return:
         """
+        self._typing_page.wait_for_load_state("load")
         page = self._typing_page.locator("html")
         for key in keys:
-            page.press(key.key)
+            page.press(key.key, delay=delay)
 
     @retries()
     def _press(self, key:KeyboardKey):
@@ -241,6 +265,7 @@ class TypingKeyboard:
         :param key: A single ``KeyboardKey``
         :return:
         """
+        self._typing_page.wait_for_load_state("load")
         page = self._typing_page.locator("html")
         page.press(key.key)
 
@@ -254,6 +279,7 @@ class TypingKeyboard:
             "Press the key [A] on your keyboard" <- [A] is the main key.
         :return:
         """
+        self._typing_page.wait_for_load_state("load")
         main_key = self._typing_page.get_by_role(TypingLessonLocators.MAIN_KEY_CONTAINER_ROLE).locator(TypingLessonLocators.KEY_LABEL)
         result:Optional[KeyboardKey] = None
 
@@ -268,6 +294,7 @@ class TypingKeyboard:
         Returns ``True`` if the end of the lesson is reached.
         :return:
         """
+        self._typing_page.wait_for_load_state("load")
         return locator_exists(self._typing_page.locator(TypingLessonLocators.BADGE))
 
     @retries()
@@ -277,24 +304,18 @@ class TypingKeyboard:
         :return:
         """
         # Locate all active keys
-        logger.debug("getting active keys")
+        self._typing_page.wait_for_load_state("load")
         active_keys = (self._typing_page.locator(TypingLessonLocators.KEYBOARD_CONTAINER)
                        .locator(TypingLessonLocators.ACTIVE_KEY))
 
         if not locator_exists(active_keys):
-            logger.debug(f"no active key locators were found, returning.")
             return
-
         raw_keys = self._extract_key_labels(active_keys)
-
         if not raw_keys:
-            logger.warning(f"raw_keys was empty. {raw_keys=} returning")
             return None
 
         keyboard_keys: list[KeyboardKey] = self._process_raw_keys(raw_keys)
-        logger.debug(f"Found active keys, returning. {active_keys=}")
         return self._apply_shift_effect(keyboard_keys)
-
 
     @retries()
     def _get_next_exercise_button(self) -> Optional[Locator]:
@@ -302,14 +323,11 @@ class TypingKeyboard:
         Returns the "Continue" button of the typing page if exists.
         :return:
         """
-        logger.debug("Getting next exercise button.")
+        self._typing_page.wait_for_load_state("load")
         button:Locator = self._typing_page.locator(TypingLessonLocators.NEXT_EXERCISE_BUTTON)
 
-
         if locator_exists(button):
-            logger.debug("found next exercise button, returning.")
             return button
-        logger.debug("No next exercise button was found, returning.")
         return None
 
     @retries()
@@ -339,12 +357,15 @@ class TypingKeyboard:
         ...
 
     @retries()
-    def start_typing(self):
+    def start_typing(self, delay:float):
         """
         Waits for the lesson page to load before starting to type until the end of the lesson is found.
+        :raises playwright.sync_api.TimeOutError, playwright.sync_api.Error:
         :return:
         """
-        logger.info("``keyboardkey`` started typing")
+        # we assume that the keyboard is started on the exercise page
+        self._typing_page.wait_for_load_state("load")
+        exercise_page_url = self._typing_page.url
         while not self._is_lesson_complete():
             # Gets each element after every loop
             self._typing_page.wait_for_load_state("networkidle")
@@ -352,21 +373,17 @@ class TypingKeyboard:
             exercise_main_key = self._get_exercise_main_key()
             exercise_active_keys = self._get_active_keys()
 
-            # checks if the keyboard is not on the exercise page
-            if self._typing_page.url == TYPING_URL:
-                logger.exception("User returned to the dashboard while typing")
-                raise IOError("Error while typing on an exercise. The user might returned to dashboard.")
-
+            # checks if the current url is the same as the exercise page.
+            if self._typing_page.url != exercise_page_url:
+                message = f"URL: {exercise_page_url} changed while performing an exercise."
+                raise URLChangedError(message)
             if next_exercise_button:
                 next_exercise_button.wait_for(timeout=30000.0)
                 next_exercise_button.click(force=True)
-
             if exercise_main_key:
                 self._press(exercise_main_key)
-                self._press(KeyboardKey(main_key=get_special_key("Enter"), secondary_key=None))
-
+                self._press(KeyboardKey(main_key=_get_special_key("Enter"), secondary_key=None))
             if exercise_active_keys:
-                self._type(exercise_active_keys)
+                self._type(exercise_active_keys, delay)
 
-        logger.info("Lesson completed, returning back to lessons dashboard.")
         self._go_back_to_lessons()

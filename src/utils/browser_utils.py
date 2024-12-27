@@ -43,7 +43,6 @@ def _win_get_default_browser_path() -> Optional[Path]:
     return path
 
 def _posix_get_default_browser_path() -> Optional[Path]:
-    logger.info("Trying to get default browser")
     path:Optional[Path] = None
     try:
         # Try xdg-settings
@@ -60,11 +59,10 @@ def _posix_get_default_browser_path() -> Optional[Path]:
                     if line.startswith("Exec="):
 
                         path = Path(line.split("=", 1)[1].strip().split()[0])
-        logger.warning("Could not get default browser")
         return None
 
     except (subprocess.SubprocessError, FileNotFoundError) as e:
-        logger.exception("xdg-command not supported")
+        print("xdg-command not supported")
 
     return  path
 
@@ -77,9 +75,7 @@ def get_default_browser() -> Optional[Path]:
             path = Path(_posix_get_default_browser_path())
         case "Windows":
             path = Path(_win_get_default_browser_path())
-        case _:
-            logger.error("OS not supported, could not get default browser")
-    logger.info("Default browser found.")
+
     return path
 
 def locator_exists(locator:Locator) -> bool:
@@ -109,9 +105,7 @@ def retries(tries:int=3):
                 except playwright.sync_api.TimeoutError as timeout_error:
                     inner_tries -= 1
                     if inner_tries <= 0:
-                        logger.exception(f"Function {func.__name__} failed after {tries} attempts.")
                         raise timeout_error
-                    logger.warning(f"Function {func.__name__} failed, tries remaining: {inner_tries}")
         return wrapper
 
     return decorator

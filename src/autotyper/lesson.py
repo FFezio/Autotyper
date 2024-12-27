@@ -1,10 +1,8 @@
 from enum import Enum
 from typing import Optional
-
 from src.core.constants import TypingLocators
-from src.core.typing_keyboard import TypingKeyboard
+from src.autotyper.typing_keyboard import TypingKeyboard
 from playwright.sync_api import Page, Locator
-
 from src.utils.browser_utils import locator_exists
 
 
@@ -20,13 +18,37 @@ class ExerciseState(Enum):
 
 class LessonExercise:
     def __init__(self, exercise_box:Locator, lesson_title:str):
+        """
+        Represents a single exercise from a lesson.
+        :param exercise_box: The locator representing the exercise div
+        :param lesson_title: The title of the lesson containing this exercise
+        """
         self._lesson_title:str = lesson_title
         self._exercise_box:Locator = exercise_box
         self._state:ExerciseState = self._get_exercise_state(exercise_box)
         self._index:int = int(exercise_box.get_attribute("data-display-order"))
 
+    def __repr__(self):
+        return f"exercise of lesson: [{self._lesson_title}] -> index: [{self._index}], state: [{self._state.name}]"
+
+    @staticmethod
+    def _get_exercise_state(exercise_box:Locator):
+        """
+        Helper method that returns the exercise state.
+        :param exercise_box: The locator representing the exercise div.
+        :return:
+        """
+        exercise_state = exercise_box.get_attribute("class").split()
+        result = ExerciseState.INCOMPLETE
+        if "is-complete" in exercise_state:
+            result = ExerciseState.COMPLETE
+        return result
+
     def start(self):
-        print("Clicked exercise box")
+        """
+        Starts the exercise by clicking its box.
+        :return:
+        """
         self._exercise_box.click()
 
     @property
@@ -41,21 +63,9 @@ class LessonExercise:
     def index(self) -> int:
         return self._index
 
-    @staticmethod
-    def _get_exercise_state(exercise_box:Locator):
-        exercise_state = exercise_box.get_attribute("class").split()
-        result = ExerciseState.INCOMPLETE
-
-        if "is-complete" in exercise_state:
-            result = ExerciseState.COMPLETE
-
-        return result
-
-    def __repr__(self):
-        return f"exercise of lesson: [{self._lesson_title}] -> index: [{self._index}], state: [{self._state.name}]"
 
 class Lesson:
-    def __init__(self,category:str, lesson_container:Locator, typing_page:Page):
+    def __init__(self,category:str, lesson_container:Locator, typing_page:Page, typing_delay:float):
         """
         Represents a single lesson from the typing website.
         :param category: The lesson category (beginner, intermediate, advance,...)
@@ -65,6 +75,7 @@ class Lesson:
         self._typing_page:Page = typing_page
         self._category:str = category
         self._title:str = lesson_container.locator(TypingLocators.LESSON_TITLE).inner_text()
+        self._typing_delay = typing_delay
         # check if the button exists (Premium lessons might not show the button if the user is on a free plan)
         button = lesson_container.locator(TypingLocators.LESSON_BUTTON)
         self._button:Optional[Locator] = button if locator_exists(button) else None
@@ -80,6 +91,11 @@ class Lesson:
 
     @staticmethod
     def _get_button_state(button:Locator) -> LessonState:
+        """
+        Helper method that returns the lesson button state.
+        :param button:
+        :return:
+        """
         if not button:
             return LessonState.UNKNOWN
 
@@ -95,17 +111,28 @@ class Lesson:
         return result
 
     def start(self):
+        """
+        Starts the lesson by clicking the active button.
+        :raises playwright.sync_api.TimeOutError, playwright.sync_api.Error:
+        :return:
+        """
         self._button.click()
-        self._keyboard.start_typing()
+        self._keyboard.start_typing(self._typing_delay)
 
     def start_from_exercise(self, number:int):
+        """
+        Starts the lesson by clicking the desired exercise
+        :param number: The exercise number
+        :raises playwright.sync_api.TimeOutError, playwright.sync_api.Error:
+        :return:
+        """
         exercise = self._exercises[number - 1]
         if exercise.state.value != ExerciseState.COMPLETE.value:
             raise IndexError(f"The Lesson exercise must be Completed to start from it. Lesson title [{exercise.lesson_title}], exercise number: [{exercise.index}]")
 
         self._typing_page.wait_for_load_state()
         self._exercises[number - 1].start()
-        self._keyboard.start_typing()
+        self._keyboard.start_typing(self._typing_delay)
 
     @property
     def state(self) -> LessonState:

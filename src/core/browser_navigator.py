@@ -2,10 +2,8 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Optional, Union
-
 import playwright.sync_api
 from playwright.sync_api import sync_playwright, Page, Browser, BrowserContext
-from src.utils.browser_utils import get_default_browser
 
 
 class BrowserNavigator:
@@ -28,19 +26,14 @@ class BrowserNavigator:
         try:
             self._browser = self._connection.chromium.connect_over_cdp("http://localhost:9222")
             self._active_window = self._browser.contexts[0]
-            new_tab = self._active_window.new_page()
-            self._active_tab = new_tab
+            self._active_tab = self._active_window.new_page() if not self.active_window.pages else self.active_window.pages[0]
 
         except playwright.sync_api.Error:
-            print("Launching new browser address: ", browser_path)
-            subprocess.Popen([browser_path, "--remote-debugging-port=9222"])
+            subprocess.Popen([browser_path, "--disable-logging", "--remote-debugging-port=9222"])
             time.sleep(4)
             self._browser = self._connection.chromium.connect_over_cdp("http://localhost:9222")
             self._active_window = self._browser.contexts[0]
-            new_tab = self._active_window.new_page()
-            self._active_tab = new_tab
-
-        self._active_tab = new_tab
+            self._active_tab = self._active_window.new_page() if not self.active_window.pages else self.active_window.pages[0]
 
     def close(self):
         """
@@ -48,17 +41,22 @@ class BrowserNavigator:
         :return:
         """
         self._browser.close()
+        self._connection.stop()
 
-    def find_tab(self, value: str) -> Optional[int]:
+    def find_tab(self, value:str) -> Optional[int]:
         """
         Finds a tab from the current active window based on its url or page title.
         Returns ``None`` if no tab was found.
         :param value: The url or page title of the tab to search.
         :return:
         """
+
         for page in self._active_window.pages:
-            if page.url == value or page.title() == value:
+            if page.url == value:
                 return self._active_window.pages.index(page)
+            elif page.title() == value:
+                return self._active_window
+
         return None
 
     def new_tab(self) -> int:
@@ -91,7 +89,7 @@ class BrowserNavigator:
         :param tab_index: The index of the tab to set active.
         :return:
         """
-        self.active_tab = self._active_window.pages[tab_index]
+        self._active_tab = self._active_window.pages[tab_index]
 
     @property
     def active_window_tabs_count(self) -> int:
