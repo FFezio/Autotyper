@@ -86,7 +86,7 @@ class Autotyper:
         :param category: The category of the lessons.
         :return:
         """
-
+        self._get_categories()
         if self._browser.active_tab.url != TYPING_URL:
             self._get_typing_page(self._browser)
         if category not in self._lessons_categories:
