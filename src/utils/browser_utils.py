@@ -1,7 +1,5 @@
 import winreg
 import platform
-import os
-import subprocess
 from logging import getLogger
 from typing import Any
 from functools import wraps
@@ -13,7 +11,7 @@ from playwright.sync_api import Locator
 
 logger = getLogger("autotyper")
 
-def _win_get_default_browser_path() -> Optional[Path]:
+def get_default_browser() -> Optional[Path]:
     """
     Retrieves the full executable path of the default browser on Windows.
 
@@ -39,42 +37,6 @@ def _win_get_default_browser_path() -> Optional[Path]:
 
     except (FileNotFoundError, IndexError, winreg.error) as e:
         logger.exception(f"Error retrieving default browser path: {e}")
-
-    return path
-
-def _posix_get_default_browser_path() -> Optional[Path]:
-    path:Optional[Path] = None
-    try:
-        # Try xdg-settings
-        browser_desktop = subprocess.check_output(
-            ["xdg-settings", "get", "default-web-browser"],
-            text=True
-        ).strip()
-
-        # Find the desktop file path
-        desktop_file = f"/usr/share/applications/{browser_desktop}"
-        if os.path.exists(desktop_file):
-            with open(desktop_file) as f:
-                for line in f:
-                    if line.startswith("Exec="):
-
-                        path = Path(line.split("=", 1)[1].strip().split()[0])
-        return None
-
-    except (subprocess.SubprocessError, FileNotFoundError) as e:
-        print("xdg-command not supported")
-
-    return  path
-
-def get_default_browser() -> Optional[Path]:
-    logger.info("Trying to get default browser")
-    path: Optional[Path] = None
-
-    match platform.system():
-        case "Linux":
-            path = Path(_posix_get_default_browser_path())
-        case "Windows":
-            path = Path(_win_get_default_browser_path())
 
     return path
 
